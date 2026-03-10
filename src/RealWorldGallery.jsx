@@ -62,7 +62,7 @@ export default function RealWorldGallery() {
               >
                 {/* Video — autoPlay removed, use preload="auto" for reliability */}
                 <video
-                  className="absolute inset-0 w-full h-full object-cover"
+                  className="absolute inset-0 w-full h-full object-cover object-bottom"
                   src={`${base}videos_rw/${file}`}
                   autoPlay
                   muted
