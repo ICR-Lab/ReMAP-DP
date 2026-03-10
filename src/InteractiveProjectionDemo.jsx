@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useMemo, useCallback, Suspense } from 'rea
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Cpu, TriangleAlert } from 'lucide-react'
+import { Cpu, TriangleAlert, Power } from 'lucide-react'
 import * as THREE from 'three'
 
 /* ─────────────────────────────────────────────
@@ -136,6 +136,11 @@ function PointCloudScene({ cloudData, onRGBTexture, onPointMapTexture }) {
     return () => {
       rgbTarget.current?.dispose()
       pmTarget.current?.dispose()
+      rgbMatRef.current?.dispose()
+      pmMatRef.current?.dispose()
+      if (pointsRef.current) {
+        pointsRef.current.geometry.dispose()
+      }
     }
   }, [])
 
@@ -249,7 +254,7 @@ function PointCloudScene({ cloudData, onRGBTexture, onPointMapTexture }) {
    4. Active 3D demo (only mounted when opted in)
    ───────────────────────────────────────────── */
 
-function ActiveDemo() {
+function ActiveDemo({ onClose }) {
   const [timestep, setTimestep] = useState(1)
   const [rgbSrc, setRgbSrc] = useState(null)
   const [pmSrc, setPmSrc] = useState(null)
@@ -356,6 +361,21 @@ function ActiveDemo() {
             Orbit to reproject
           </span>
         </div>
+
+        {/* Close / Free Resources button */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-50
+                     bg-black/50 backdrop-blur-md border border-white/20 text-white
+                     rounded-full px-4 py-2 flex items-center gap-2
+                     hover:bg-red-500/80 hover:border-red-500
+                     transition-all shadow-lg cursor-pointer
+                     text-sm font-medium"
+        >
+          <Power className="w-4 h-4" />
+          <span className="hidden sm:inline">Close Demo &amp; Free Memory</span>
+          <span className="sm:hidden">Close Demo</span>
+        </button>
       </div>
 
       {/* Timestep slider */}
@@ -491,9 +511,10 @@ export default function InteractiveProjectionDemo() {
               key="demo"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               transition={{ duration: 0.4, ease: 'easeOut' }}
             >
-              <ActiveDemo />
+              <ActiveDemo onClose={() => setIsDemoActive(false)} />
             </motion.div>
           )}
         </AnimatePresence>
