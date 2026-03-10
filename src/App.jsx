@@ -126,9 +126,16 @@ function Hero() {
             <span key={i} className="font-medium">
               {a.name}
               {a.superscript && <sup className="text-xs ml-0.5">{a.superscript}</sup>}
+              {a.equalContribution && <sup className="text-xs ml-0.5">*</sup>}
+              {a.corresponding && <sup className="text-xs ml-0.5">&dagger;</sup>}
             </span>
           ))}
         </div>
+
+        {/* ---------- Contribution footnotes ---------- */}
+        <p className="mt-2 text-xs text-white/40">
+          * Equal contribution &nbsp;&nbsp; &dagger; Corresponding author
+        </p>
 
         {/* ---------- Affiliations ---------- */}
         {AFFILIATIONS.length > 0 && (
