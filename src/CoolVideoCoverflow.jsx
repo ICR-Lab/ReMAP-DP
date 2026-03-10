@@ -28,7 +28,7 @@ function parseTitle(filename) {
    CONFIG
    ================================================================ */
 const CARD_W = 640
-const CARD_SPACING = 280 // center-to-center distance for side cards (tighter overlap)
+const CARD_SPACING = 280
 const SPRING = { type: 'spring', stiffness: 260, damping: 28 }
 
 function getCardTransform(offset) {
@@ -52,9 +52,11 @@ function getCardTransform(offset) {
 export default function CoolVideoCoverflow() {
   const [focused, setFocused] = useState(0)
   const videoRefs = useRef([])
-  const dragRef = useRef({ startX: 0, dragging: false })
   const count = VIDEO_FILES.length
   const base = import.meta.env.BASE_URL
+
+  // Drag state: tracked per-pointer, not on container
+  const pointerState = useRef({ id: null, startX: 0, moved: false, startFocused: 0 })
 
   const goTo = useCallback(
     (i) => setFocused(Math.max(0, Math.min(count - 1, i))),
@@ -84,29 +86,40 @@ export default function CoolVideoCoverflow() {
     return () => window.removeEventListener('keydown', handler)
   }, [focused, goTo])
 
-  // Drag on the background only (not on buttons/cards)
-  const onMouseDown = useCallback((e) => {
-    // Only track drag if clicking the background area directly
-    dragRef.current = { startX: e.clientX, dragging: false, startFocused: focused }
+  // ---- Pointer handlers on viewport for drag ----
+  const onPointerDown = useCallback((e) => {
+    pointerState.current = {
+      id: e.pointerId,
+      startX: e.clientX,
+      moved: false,
+      startFocused: focused,
+    }
   }, [focused])
 
-  const onMouseMove = useCallback((e) => {
-    if (dragRef.current.startX === null) return
-    if (Math.abs(e.clientX - dragRef.current.startX) > 10) {
-      dragRef.current.dragging = true
+  const onPointerMove = useCallback((e) => {
+    const ps = pointerState.current
+    if (ps.id !== e.pointerId) return
+    if (Math.abs(e.clientX - ps.startX) > 12) {
+      ps.moved = true
     }
   }, [])
 
-  const onMouseUp = useCallback((e) => {
-    if (!dragRef.current.dragging) {
-      dragRef.current.startX = null
-      return
+  const onPointerUp = useCallback((e) => {
+    const ps = pointerState.current
+    if (ps.id !== e.pointerId) return
+    if (ps.moved) {
+      const dx = e.clientX - ps.startX
+      const shift = Math.round(-dx / (CARD_SPACING * 0.6))
+      goTo(ps.startFocused + shift)
     }
-    const dx = e.clientX - dragRef.current.startX
-    const shift = Math.round(-dx / (CARD_SPACING * 0.6))
-    goTo(dragRef.current.startFocused + shift)
-    dragRef.current.startX = null
-    dragRef.current.dragging = false
+    pointerState.current = { id: null, startX: 0, moved: false, startFocused: 0 }
+  }, [goTo])
+
+  // ---- Card click: only fires if pointer didn't drag ----
+  const handleCardClick = useCallback((cardIndex) => {
+    // If the pointer moved (was a drag), ignore the click
+    if (pointerState.current.moved) return
+    goTo(cardIndex)
   }, [goTo])
 
   return (
@@ -125,20 +138,21 @@ export default function CoolVideoCoverflow() {
 
       {/* Viewport */}
       <div
-        className="relative w-full overflow-hidden"
+        className="relative w-full overflow-hidden touch-pan-y"
         style={{ height: 440 }}
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        onMouseLeave={onMouseUp}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={onPointerUp}
       >
         {/* Gradient edges */}
         <div className="absolute inset-y-0 left-0 w-24 sm:w-44 bg-gradient-to-r from-gray-900 to-transparent z-20 pointer-events-none" />
         <div className="absolute inset-y-0 right-0 w-24 sm:w-44 bg-gradient-to-l from-gray-900 to-transparent z-20 pointer-events-none" />
 
-        {/* Arrow buttons — z-40 above everything, pointer-events restored */}
+        {/* Arrow buttons */}
         <button
-          onClick={(e) => { e.stopPropagation(); goTo(focused - 1) }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => goTo(focused - 1)}
           disabled={focused === 0}
           className="absolute top-1/2 -translate-y-1/2 z-40 left-3 sm:left-8
                      w-12 h-12 rounded-full flex items-center justify-center
@@ -153,7 +167,8 @@ export default function CoolVideoCoverflow() {
           </svg>
         </button>
         <button
-          onClick={(e) => { e.stopPropagation(); goTo(focused + 1) }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => goTo(focused + 1)}
           disabled={focused === count - 1}
           className="absolute top-1/2 -translate-y-1/2 z-40 right-3 sm:right-8
                      w-12 h-12 rounded-full flex items-center justify-center
@@ -174,8 +189,6 @@ export default function CoolVideoCoverflow() {
             const offset = i - focused
             const abs = Math.abs(offset)
             const t = getCardTransform(offset)
-
-            // Focused card: centered at 0. Side cards: stacked closer together.
             const x = offset === 0 ? 0 : Math.sign(offset) * (CARD_W * 0.42 + (abs - 1) * CARD_SPACING + CARD_SPACING * 0.5)
 
             return (
@@ -196,10 +209,7 @@ export default function CoolVideoCoverflow() {
                   opacity: t.opacity,
                 }}
                 transition={SPRING}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  if (!dragRef.current.dragging) goTo(i)
-                }}
+                onClick={() => handleCardClick(i)}
               >
                 <div
                   className={`rounded-2xl overflow-hidden transition-shadow duration-500
