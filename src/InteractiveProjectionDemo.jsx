@@ -1,6 +1,8 @@
 import { useRef, useState, useEffect, useMemo, useCallback, Suspense } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Cpu, TriangleAlert } from 'lucide-react'
 import * as THREE from 'three'
 
 /* ─────────────────────────────────────────────
@@ -244,16 +246,15 @@ function PointCloudScene({ cloudData, onRGBTexture, onPointMapTexture }) {
 }
 
 /* ─────────────────────────────────────────────
-   4. Main exported component
+   4. Active 3D demo (only mounted when opted in)
    ───────────────────────────────────────────── */
 
-export default function InteractiveProjectionDemo() {
+function ActiveDemo() {
   const [timestep, setTimestep] = useState(1)
   const [rgbSrc, setRgbSrc] = useState(null)
   const [pmSrc, setPmSrc] = useState(null)
   const [cloudData, setCloudData] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [availableBins, setAvailableBins] = useState([1]) // tracks which bins exist
 
   // Try loading real bin, fallback to mock
   useEffect(() => {
@@ -271,7 +272,6 @@ export default function InteractiveProjectionDemo() {
       })
       .catch(() => {
         if (!cancelled) {
-          // Fallback to mock
           setCloudData(generateMockPointCloud(timestep))
           setLoading(false)
         }
@@ -283,6 +283,194 @@ export default function InteractiveProjectionDemo() {
   const handlePM = useCallback((src) => setPmSrc(src), [])
 
   return (
+    <>
+      {/* Main container */}
+      <div
+        className="relative w-full rounded-2xl overflow-hidden border border-gray-700 bg-gray-950 touch-none select-none"
+        style={{ aspectRatio: '16/9' }}
+      >
+        {/* 3D Canvas */}
+        <Canvas
+          camera={{ position: [0.8, -0.3, 1.2], fov: 50, near: 0.01, far: 100 }}
+          gl={{ antialias: true, preserveDrawingBuffer: true }}
+          dpr={[1, 1.5]}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <ambientLight intensity={0.5} />
+          <Suspense fallback={null}>
+            <PointCloudScene
+              cloudData={cloudData}
+              onRGBTexture={handleRGB}
+              onPointMapTexture={handlePM}
+            />
+          </Suspense>
+          <OrbitControls
+            target={[0, -0.1, 0.45]}
+            enableDamping
+            dampingFactor={0.12}
+            minDistance={0.3}
+            maxDistance={3}
+          />
+        </Canvas>
+
+        {/* Loading overlay */}
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-950/80 z-20">
+            <div className="flex items-center gap-3 text-gray-400 text-sm">
+              <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Loading point cloud...
+            </div>
+          </div>
+        )}
+
+        {/* PIP overlays */}
+        <div className="absolute bottom-3 right-3 flex gap-2 z-10">
+          <div className="flex flex-col items-center">
+            <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-lg overflow-hidden border border-gray-600 bg-gray-900 shadow-lg">
+              {rgbSrc ? (
+                <img src={rgbSrc} alt="RGB Projection" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-gray-600 text-xs">RGB</div>
+              )}
+            </div>
+            <span className="text-[10px] text-gray-500 mt-1 font-medium">Projected RGB</span>
+          </div>
+          <div className="flex flex-col items-center">
+            <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-lg overflow-hidden border border-gray-600 bg-gray-900 shadow-lg">
+              {pmSrc ? (
+                <img src={pmSrc} alt="PointMap Projection" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-gray-600 text-xs">PointMap</div>
+              )}
+            </div>
+            <span className="text-[10px] text-gray-500 mt-1 font-medium">Projected PointMap</span>
+          </div>
+        </div>
+
+        {/* Camera angle label */}
+        <div className="absolute top-3 left-3 z-10">
+          <span className="px-2.5 py-1 rounded-md bg-black/50 backdrop-blur-sm text-[11px] text-gray-300 font-mono border border-gray-700">
+            Orbit to reproject
+          </span>
+        </div>
+      </div>
+
+      {/* Timestep slider */}
+      <div className="mt-5 flex items-center gap-4">
+        <label className="text-sm text-gray-400 font-medium whitespace-nowrap">
+          Time Step: <span className="text-white font-mono">{timestep}</span>
+        </label>
+        <input
+          type="range"
+          min={1}
+          max={10}
+          step={1}
+          value={timestep}
+          onChange={(e) => setTimestep(Number(e.target.value))}
+          className="flex-1 h-1.5 rounded-full appearance-none bg-gray-700 accent-blue-500 cursor-pointer
+                     [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
+                     [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:shadow-lg
+                     [&::-webkit-slider-thumb]:cursor-pointer"
+        />
+        <div className="flex gap-1.5">
+          {Array.from({ length: 10 }, (_, i) => i + 1).map((s) => (
+            <button
+              key={s}
+              onClick={() => setTimestep(s)}
+              className={`w-6 h-6 rounded text-[10px] font-mono transition-colors cursor-pointer
+                ${s === timestep
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-800 text-gray-500 hover:bg-gray-700 hover:text-gray-300'
+                }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <p className="text-xs text-gray-600 mt-3">
+        Drag to orbit the point cloud. The two viewports show the re-projected RGB image and the PointMap (XYZ &rarr; RGB encoding) from your exact camera angle &mdash; computed entirely on the GPU via WebGL render targets.
+      </p>
+    </>
+  )
+}
+
+/* ─────────────────────────────────────────────
+   5. Performance warning overlay
+   ───────────────────────────────────────────── */
+
+function PerformanceOverlay({ onActivate }) {
+  return (
+    <motion.div
+      initial={{ opacity: 1 }}
+      exit={{ opacity: 0, scale: 0.98 }}
+      transition={{ duration: 0.4, ease: 'easeOut' }}
+      className="relative w-full h-[540px] sm:h-[600px] rounded-2xl overflow-hidden border border-gray-700"
+    >
+      {/* Background preview image */}
+      <img
+        src={`${BASE}demo-preview.png`}
+        alt=""
+        className="absolute inset-0 w-full h-full object-cover"
+      />
+      {/* Dark scrim */}
+      <div className="absolute inset-0 bg-gradient-to-br from-neutral-900/85 to-slate-900/90 backdrop-blur-sm" />
+
+      {/* Glassmorphism card */}
+      <div className="absolute inset-0 flex items-center justify-center p-6">
+        <div className="backdrop-blur-md bg-black/40 border border-white/10 rounded-2xl p-8 max-w-md text-center shadow-2xl">
+          {/* Icons */}
+          <div className="flex items-center justify-center gap-3 mb-5">
+            <div className="w-11 h-11 rounded-xl bg-amber-500/15 border border-amber-500/20 flex items-center justify-center">
+              <TriangleAlert className="w-5 h-5 text-amber-400" />
+            </div>
+            <div className="w-11 h-11 rounded-xl bg-blue-500/15 border border-blue-500/20 flex items-center justify-center">
+              <Cpu className="w-5 h-5 text-blue-400" />
+            </div>
+          </div>
+
+          {/* Title */}
+          <h3 className="text-lg font-bold text-white mb-3">
+            High-Performance WebGL Demo
+          </h3>
+
+          {/* Description */}
+          <p className="text-sm text-neutral-300 leading-relaxed mb-6">
+            This interactive point cloud reprojection requires a dedicated GPU.
+            It may cause lag or drain battery on mobile devices or ultrabooks.
+            <span className="block mt-1.5 text-neutral-500 text-xs">
+              Approx. 10 MB data payload
+            </span>
+          </p>
+
+          {/* Activate button */}
+          <button
+            onClick={onActivate}
+            className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-full font-medium
+                       transition-all duration-300 hover:scale-105
+                       ring-4 ring-blue-500/30 hover:ring-blue-500/50
+                       cursor-pointer shadow-lg shadow-blue-500/20"
+          >
+            Initialize Interactive Demo
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+/* ─────────────────────────────────────────────
+   6. Main exported component
+   ───────────────────────────────────────────── */
+
+export default function InteractiveProjectionDemo() {
+  const [isDemoActive, setIsDemoActive] = useState(false)
+
+  return (
     <section id="demo" className="relative pt-16 pb-16 bg-gray-900">
       {/* Top gradient: white → dark */}
       <div className="absolute top-0 inset-x-0 h-24 bg-gradient-to-b from-white to-transparent pointer-events-none" />
@@ -292,120 +480,23 @@ export default function InteractiveProjectionDemo() {
           Interactive Reprojection Demo
         </h2>
         <p className="text-gray-400 text-sm mb-6">
-          Orbit the 3D point cloud — two viewports render the projected RGB and PointMap in real time from your camera angle.
+          Orbit the 3D point cloud &mdash; two viewports render the projected RGB and PointMap in real time from your camera angle.
         </p>
 
-        {/* Main container */}
-        <div className="relative w-full rounded-2xl overflow-hidden border border-gray-700 bg-gray-950"
-          style={{ aspectRatio: '16/9' }}
-        >
-          {/* 3D Canvas */}
-          <Canvas
-            camera={{ position: [0.8, -0.3, 1.2], fov: 50, near: 0.01, far: 100 }}
-            gl={{ antialias: true, preserveDrawingBuffer: true }}
-            dpr={[1, 1.5]}
-          >
-            <ambientLight intensity={0.5} />
-            <Suspense fallback={null}>
-              <PointCloudScene
-                cloudData={cloudData}
-                onRGBTexture={handleRGB}
-                onPointMapTexture={handlePM}
-              />
-            </Suspense>
-            <OrbitControls
-              target={[0, -0.1, 0.45]}
-              enableDamping
-              dampingFactor={0.12}
-              minDistance={0.3}
-              maxDistance={3}
-            />
-          </Canvas>
-
-          {/* Loading overlay */}
-          {loading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-950/80 z-20">
-              <div className="flex items-center gap-3 text-gray-400 text-sm">
-                <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                Loading point cloud...
-              </div>
-            </div>
+        <AnimatePresence mode="wait">
+          {!isDemoActive ? (
+            <PerformanceOverlay key="overlay" onActivate={() => setIsDemoActive(true)} />
+          ) : (
+            <motion.div
+              key="demo"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.4, ease: 'easeOut' }}
+            >
+              <ActiveDemo />
+            </motion.div>
           )}
-
-          {/* PIP overlays */}
-          <div className="absolute bottom-3 right-3 flex gap-2 z-10">
-            {/* RGB projection */}
-            <div className="flex flex-col items-center">
-              <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-lg overflow-hidden border border-gray-600 bg-gray-900 shadow-lg">
-                {rgbSrc ? (
-                  <img src={rgbSrc} alt="RGB Projection" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-600 text-xs">RGB</div>
-                )}
-              </div>
-              <span className="text-[10px] text-gray-500 mt-1 font-medium">Projected RGB</span>
-            </div>
-            {/* PointMap projection */}
-            <div className="flex flex-col items-center">
-              <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-lg overflow-hidden border border-gray-600 bg-gray-900 shadow-lg">
-                {pmSrc ? (
-                  <img src={pmSrc} alt="PointMap Projection" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-600 text-xs">PointMap</div>
-                )}
-              </div>
-              <span className="text-[10px] text-gray-500 mt-1 font-medium">Projected PointMap</span>
-            </div>
-          </div>
-
-          {/* Camera angle label */}
-          <div className="absolute top-3 left-3 z-10">
-            <span className="px-2.5 py-1 rounded-md bg-black/50 backdrop-blur-sm text-[11px] text-gray-300 font-mono border border-gray-700">
-              Orbit to reproject
-            </span>
-          </div>
-        </div>
-
-        {/* Timestep slider */}
-        <div className="mt-5 flex items-center gap-4">
-          <label className="text-sm text-gray-400 font-medium whitespace-nowrap">
-            Time Step: <span className="text-white font-mono">{timestep}</span>
-          </label>
-          <input
-            type="range"
-            min={1}
-            max={10}
-            step={1}
-            value={timestep}
-            onChange={(e) => setTimestep(Number(e.target.value))}
-            className="flex-1 h-1.5 rounded-full appearance-none bg-gray-700 accent-blue-500 cursor-pointer
-                       [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
-                       [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:shadow-lg
-                       [&::-webkit-slider-thumb]:cursor-pointer"
-          />
-          <div className="flex gap-1.5">
-            {Array.from({ length: 10 }, (_, i) => i + 1).map((s) => (
-              <button
-                key={s}
-                onClick={() => setTimestep(s)}
-                className={`w-6 h-6 rounded text-[10px] font-mono transition-colors cursor-pointer
-                  ${s === timestep
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-800 text-gray-500 hover:bg-gray-700 hover:text-gray-300'
-                  }`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <p className="text-xs text-gray-600 mt-3">
-          Drag to orbit the point cloud. The two viewports show the re-projected RGB image and the PointMap (XYZ → RGB encoding) from your exact camera angle — computed entirely on the GPU via WebGL render targets.
-        </p>
+        </AnimatePresence>
       </div>
     </section>
   )
