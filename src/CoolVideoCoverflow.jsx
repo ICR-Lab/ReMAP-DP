@@ -110,7 +110,9 @@ export default function CoolVideoCoverflow() {
   }, [goTo])
 
   return (
-    <section id="simulation" className="relative py-20 sm:py-28 bg-neutral-950 overflow-hidden select-none">
+    <section id="simulation" className="relative pt-20 pb-10 sm:pt-28 sm:pb-14 bg-gray-900 overflow-hidden select-none">
+      {/* Top gradient: white -> dark */}
+      <div className="absolute top-0 inset-x-0 h-24 bg-gradient-to-b from-white to-transparent pointer-events-none" />
       {/* Heading */}
       <div className="max-w-5xl mx-auto px-6 mb-12 sm:mb-16">
         <h2 className="text-2xl sm:text-3xl font-bold text-white mb-3">
@@ -124,15 +126,15 @@ export default function CoolVideoCoverflow() {
       {/* Viewport */}
       <div
         className="relative w-full overflow-hidden"
-        style={{ height: 380 }}
+        style={{ height: 440 }}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
         onMouseLeave={onMouseUp}
       >
         {/* Gradient edges */}
-        <div className="absolute inset-y-0 left-0 w-24 sm:w-44 bg-gradient-to-r from-neutral-950 to-transparent z-20 pointer-events-none" />
-        <div className="absolute inset-y-0 right-0 w-24 sm:w-44 bg-gradient-to-l from-neutral-950 to-transparent z-20 pointer-events-none" />
+        <div className="absolute inset-y-0 left-0 w-24 sm:w-44 bg-gradient-to-r from-gray-900 to-transparent z-20 pointer-events-none" />
+        <div className="absolute inset-y-0 right-0 w-24 sm:w-44 bg-gradient-to-l from-gray-900 to-transparent z-20 pointer-events-none" />
 
         {/* Arrow buttons — z-40 above everything, pointer-events restored */}
         <button

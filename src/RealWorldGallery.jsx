@@ -28,7 +28,10 @@ export default function RealWorldGallery() {
   const base = import.meta.env.BASE_URL
 
   return (
-    <section id="realworld" className="py-20 sm:py-28 bg-neutral-950">
+    <section id="realworld" className="relative pt-10 pb-20 sm:pt-14 sm:pb-28 bg-gray-900">
+      {/* Bottom gradient: dark -> white (into the Results section) */}
+      <div className="absolute bottom-0 inset-x-0 h-24 bg-gradient-to-b from-transparent to-white pointer-events-none" />
+
       {/* Heading */}
       <div className="max-w-5xl mx-auto px-6 mb-10 sm:mb-14">
         <h2 className="text-2xl sm:text-3xl font-bold text-white mb-3">
@@ -41,7 +44,7 @@ export default function RealWorldGallery() {
 
       {/* Accordion container */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="flex flex-row gap-2 sm:gap-3 h-[500px] sm:h-[600px]">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 h-auto sm:h-[600px]">
           {VIDEO_FILES.map((file, i) => {
             const isHovered = hovered === i
             const someoneHovered = hovered !== null
@@ -50,14 +53,14 @@ export default function RealWorldGallery() {
             return (
               <motion.div
                 key={file}
-                className="relative rounded-2xl overflow-hidden cursor-pointer"
+                className="relative rounded-2xl overflow-hidden cursor-pointer h-[200px] sm:h-auto"
                 style={{ flex: isHovered ? 5 : someoneHovered ? 0.6 : 1 }}
                 animate={{ flex: isHovered ? 5 : someoneHovered ? 0.6 : 1 }}
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                 onMouseEnter={() => setHovered(i)}
                 onMouseLeave={() => setHovered(null)}
               >
-                {/* Video */}
+                {/* Video — autoPlay removed, use preload="auto" for reliability */}
                 <video
                   className="absolute inset-0 w-full h-full object-cover"
                   src={`${base}videos_rw/${file}`}
@@ -65,7 +68,7 @@ export default function RealWorldGallery() {
                   muted
                   loop
                   playsInline
-                  preload="metadata"
+                  preload="auto"
                 />
 
                 {/* Dark gradient overlay */}
@@ -73,12 +76,7 @@ export default function RealWorldGallery() {
 
                 {/* Title — vertical when narrow, horizontal when expanded */}
                 <div className="absolute inset-0 flex items-end">
-                  <motion.div
-                    className="p-4 sm:p-5 w-full"
-                    animate={{
-                      opacity: 1,
-                    }}
-                  >
+                  <motion.div className="p-4 sm:p-5 w-full">
                     <motion.h3
                       className="font-semibold text-white whitespace-nowrap origin-bottom-left"
                       animate={{
