@@ -530,6 +530,7 @@ function App() {
         <Results />
         <BibTeX />
       </main>
+      <VisitorTraffic />
       <Footer />
     </div>
   )
