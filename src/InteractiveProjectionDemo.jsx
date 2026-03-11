@@ -6,12 +6,11 @@ import { Cpu, TriangleAlert, Power } from 'lucide-react'
 import * as THREE from 'three'
 
 /* ─────────────────────────────────────────────
-   1. Data helpers
+   1. Data helpers (pure functions, no retained state)
    ───────────────────────────────────────────── */
 
 const BASE = import.meta.env.BASE_URL
 
-// Load real .bin  (XYZRGB, 6 × float32 per point)
 async function loadBinPointCloud(url) {
   const resp = await fetch(url)
   const buf = await resp.arrayBuffer()
@@ -20,7 +19,6 @@ async function loadBinPointCloud(url) {
   const positions = new Float32Array(count * 3)
   const colors = new Float32Array(count * 3)
   for (let i = 0; i < count; i++) {
-    // Remap: X stays, negate Y so "up" in robot frame renders up in Three.js, Z stays
     positions[i * 3] = raw[i * 6]
     positions[i * 3 + 1] = -raw[i * 6 + 1]
     positions[i * 3 + 2] = raw[i * 6 + 2]
@@ -31,7 +29,6 @@ async function loadBinPointCloud(url) {
   return { positions, colors, count }
 }
 
-// Generate synthetic fallback
 function generateMockPointCloud(timestep) {
   const count = 30000
   const positions = new Float32Array(count * 3)
@@ -71,28 +68,28 @@ const pointMapFragmentShader = /* glsl */ `
   uniform vec3 uBoundsMin;
   uniform vec3 uBoundsRange;
   void main() {
-    // Normalize world coords to [0,1] for RGB visualization
     vec3 normalized = (vWorldPos - uBoundsMin) / uBoundsRange;
     gl_FragColor = vec4(clamp(normalized, 0.0, 1.0), 1.0);
   }
 `
 
 /* ─────────────────────────────────────────────
-   3. Points mesh with dual-pass rendering
+   3. Inner R3F scene — dual-pass render-to-texture
+   Runs inside <Canvas>, accesses gl context via useThree.
    ───────────────────────────────────────────── */
 
 const RENDER_SIZE = 256
 
-function PointCloudScene({ cloudData, onRGBTexture, onPointMapTexture }) {
+function PointCloudInner({ cloudData, onRGBTexture, onPointMapTexture }) {
   const { gl, camera, scene } = useThree()
   const pointsRef = useRef()
   const rgbMatRef = useRef()
   const pmMatRef = useRef()
-  const rgbTarget = useRef()
-  const pmTarget = useRef()
-  const rgbCanvas = useRef(document.createElement('canvas'))
-  const pmCanvas = useRef(document.createElement('canvas'))
-  const pixelBuf = useRef(new Uint8Array(RENDER_SIZE * RENDER_SIZE * 4))
+  const rgbTargetRef = useRef(null)
+  const pmTargetRef = useRef(null)
+  const rgbCanvasRef = useRef(document.createElement('canvas'))
+  const pmCanvasRef = useRef(document.createElement('canvas'))
+  const pixelBufRef = useRef(new Uint8Array(RENDER_SIZE * RENDER_SIZE * 4))
 
   // Compute bounds for PointMap normalization
   const bounds = useMemo(() => {
@@ -108,45 +105,53 @@ function PointCloudScene({ cloudData, onRGBTexture, onPointMapTexture }) {
       if (pos[i + 1] > maxY) maxY = pos[i + 1]
       if (pos[i + 2] > maxZ) maxZ = pos[i + 2]
     }
-    const rangeX = maxX - minX || 1
-    const rangeY = maxY - minY || 1
-    const rangeZ = maxZ - minZ || 1
     return {
       min: new THREE.Vector3(minX, minY, minZ),
-      range: new THREE.Vector3(rangeX, rangeY, rangeZ),
+      range: new THREE.Vector3(
+        (maxX - minX) || 1,
+        (maxY - minY) || 1,
+        (maxZ - minZ) || 1,
+      ),
     }
   }, [cloudData])
 
-  // Create render targets
+  // ── WebGLRenderTarget lifecycle ──
   useEffect(() => {
-    rgbTarget.current = new THREE.WebGLRenderTarget(RENDER_SIZE, RENDER_SIZE, {
-      minFilter: THREE.LinearFilter,
-      magFilter: THREE.LinearFilter,
-      format: THREE.RGBAFormat,
-    })
-    pmTarget.current = new THREE.WebGLRenderTarget(RENDER_SIZE, RENDER_SIZE, {
-      minFilter: THREE.LinearFilter,
-      magFilter: THREE.LinearFilter,
-      format: THREE.RGBAFormat,
-    })
-    rgbCanvas.current.width = RENDER_SIZE
-    rgbCanvas.current.height = RENDER_SIZE
-    pmCanvas.current.width = RENDER_SIZE
-    pmCanvas.current.height = RENDER_SIZE
+    const rtOpts = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat }
+    rgbTargetRef.current = new THREE.WebGLRenderTarget(RENDER_SIZE, RENDER_SIZE, rtOpts)
+    pmTargetRef.current = new THREE.WebGLRenderTarget(RENDER_SIZE, RENDER_SIZE, { ...rtOpts })
+    rgbCanvasRef.current.width = RENDER_SIZE
+    rgbCanvasRef.current.height = RENDER_SIZE
+    pmCanvasRef.current.width = RENDER_SIZE
+    pmCanvasRef.current.height = RENDER_SIZE
+
     return () => {
-      rgbTarget.current?.dispose()
-      pmTarget.current?.dispose()
+      // Dispose render targets (frees GPU framebuffer + texture)
+      rgbTargetRef.current?.dispose()
+      pmTargetRef.current?.dispose()
+      rgbTargetRef.current = null
+      pmTargetRef.current = null
+      // Dispose materials
       rgbMatRef.current?.dispose()
       pmMatRef.current?.dispose()
+      rgbMatRef.current = null
+      pmMatRef.current = null
+      // Dispose geometry and its buffer attributes
       if (pointsRef.current) {
-        pointsRef.current.geometry.dispose()
+        const geom = pointsRef.current.geometry
+        geom.dispose()
+        pointsRef.current = null
       }
+      // Sever refs to large typed arrays so V8 can GC them
+      pixelBufRef.current = null
+      rgbCanvasRef.current = null
+      pmCanvasRef.current = null
     }
   }, [])
 
-  // Create PointMap shader material
+  // ── PointMap ShaderMaterial lifecycle ──
   useEffect(() => {
-    pmMatRef.current = new THREE.ShaderMaterial({
+    const mat = new THREE.ShaderMaterial({
       vertexShader: pointMapVertexShader,
       fragmentShader: pointMapFragmentShader,
       uniforms: {
@@ -155,70 +160,75 @@ function PointCloudScene({ cloudData, onRGBTexture, onPointMapTexture }) {
         uBoundsRange: { value: bounds.range },
       },
     })
-    return () => pmMatRef.current?.dispose()
+    pmMatRef.current = mat
+    return () => {
+      mat.dispose()
+      if (pmMatRef.current === mat) pmMatRef.current = null
+    }
   }, [bounds])
 
-  // Update geometry when data changes
+  // ── Update geometry when data changes ──
   useEffect(() => {
     if (!pointsRef.current || !cloudData) return
     const geom = pointsRef.current.geometry
+    // Dispose old buffer attributes before replacing
+    const oldPos = geom.getAttribute('position')
+    const oldCol = geom.getAttribute('color')
     geom.setAttribute('position', new THREE.BufferAttribute(cloudData.positions, 3))
     geom.setAttribute('color', new THREE.BufferAttribute(cloudData.colors, 3))
     geom.computeBoundingSphere()
+    // Explicitly delete old attributes (severs reference to old Float32Arrays)
+    if (oldPos) oldPos.array = null
+    if (oldCol) oldCol.array = null
   }, [cloudData])
 
-  // Frame counter for throttled render-to-texture
+  // ── Throttled render-to-texture ──
   const frameCount = useRef(0)
 
   useFrame(() => {
-    if (!pointsRef.current || !rgbTarget.current || !pmTarget.current) return
+    if (!pointsRef.current || !rgbTargetRef.current || !pmTargetRef.current || !pixelBufRef.current) return
     frameCount.current++
-    // Render to texture every 3 frames to save GPU
     if (frameCount.current % 3 !== 0) return
 
     const pts = pointsRef.current
     const origMat = pts.material
 
-    // --- Pass 1: RGB ---
-    gl.setRenderTarget(rgbTarget.current)
-    gl.setClearColor(0x111827, 1) // bg-gray-900
+    // Pass 1: RGB
+    gl.setRenderTarget(rgbTargetRef.current)
+    gl.setClearColor(0x111827, 1)
     gl.clear()
     gl.render(scene, camera)
 
-    // Read pixels for RGB overlay
-    gl.readRenderTargetPixels(rgbTarget.current, 0, 0, RENDER_SIZE, RENDER_SIZE, pixelBuf.current)
-    const rgbCtx = rgbCanvas.current.getContext('2d')
+    gl.readRenderTargetPixels(rgbTargetRef.current, 0, 0, RENDER_SIZE, RENDER_SIZE, pixelBufRef.current)
+    const rgbCtx = rgbCanvasRef.current.getContext('2d')
     const rgbImgData = rgbCtx.createImageData(RENDER_SIZE, RENDER_SIZE)
-    // WebGL reads bottom-up, flip vertically
     for (let y = 0; y < RENDER_SIZE; y++) {
       const srcRow = (RENDER_SIZE - 1 - y) * RENDER_SIZE * 4
       const dstRow = y * RENDER_SIZE * 4
-      rgbImgData.data.set(pixelBuf.current.subarray(srcRow, srcRow + RENDER_SIZE * 4), dstRow)
+      rgbImgData.data.set(pixelBufRef.current.subarray(srcRow, srcRow + RENDER_SIZE * 4), dstRow)
     }
     rgbCtx.putImageData(rgbImgData, 0, 0)
-    onRGBTexture(rgbCanvas.current.toDataURL())
+    onRGBTexture(rgbCanvasRef.current.toDataURL())
 
-    // --- Pass 2: PointMap ---
+    // Pass 2: PointMap
     pts.material = pmMatRef.current
-    gl.setRenderTarget(pmTarget.current)
+    gl.setRenderTarget(pmTargetRef.current)
     gl.setClearColor(0x000000, 1)
     gl.clear()
     gl.render(scene, camera)
     pts.material = origMat
 
-    // Read pixels for PointMap overlay
-    gl.readRenderTargetPixels(pmTarget.current, 0, 0, RENDER_SIZE, RENDER_SIZE, pixelBuf.current)
-    const pmCtx = pmCanvas.current.getContext('2d')
+    gl.readRenderTargetPixels(pmTargetRef.current, 0, 0, RENDER_SIZE, RENDER_SIZE, pixelBufRef.current)
+    const pmCtx = pmCanvasRef.current.getContext('2d')
     const pmImgData = pmCtx.createImageData(RENDER_SIZE, RENDER_SIZE)
     for (let y = 0; y < RENDER_SIZE; y++) {
       const srcRow = (RENDER_SIZE - 1 - y) * RENDER_SIZE * 4
       const dstRow = y * RENDER_SIZE * 4
-      pmImgData.data.set(pixelBuf.current.subarray(srcRow, srcRow + RENDER_SIZE * 4), dstRow)
+      pmImgData.data.set(pixelBufRef.current.subarray(srcRow, srcRow + RENDER_SIZE * 4), dstRow)
     }
     pmCtx.putImageData(pmImgData, 0, 0)
-    onPointMapTexture(pmCanvas.current.toDataURL())
+    onPointMapTexture(pmCanvasRef.current.toDataURL())
 
-    // Restore render target
     gl.setRenderTarget(null)
   })
 
@@ -227,41 +237,28 @@ function PointCloudScene({ cloudData, onRGBTexture, onPointMapTexture }) {
   return (
     <points ref={pointsRef}>
       <bufferGeometry>
-        <bufferAttribute
-          attach="attributes-position"
-          array={cloudData.positions}
-          count={cloudData.count}
-          itemSize={3}
-        />
-        <bufferAttribute
-          attach="attributes-color"
-          array={cloudData.colors}
-          count={cloudData.count}
-          itemSize={3}
-        />
+        <bufferAttribute attach="attributes-position" array={cloudData.positions} count={cloudData.count} itemSize={3} />
+        <bufferAttribute attach="attributes-color" array={cloudData.colors} count={cloudData.count} itemSize={3} />
       </bufferGeometry>
-      <pointsMaterial
-        ref={rgbMatRef}
-        size={0.003}
-        vertexColors
-        sizeAttenuation
-      />
+      <pointsMaterial ref={rgbMatRef} size={0.003} vertexColors sizeAttenuation />
     </points>
   )
 }
 
 /* ─────────────────────────────────────────────
-   4. Active 3D demo (only mounted when opted in)
+   4. Self-contained demo component
+   ALL heavy state (cloudData, Canvas, refs) lives here.
+   Unmounting this component destroys everything.
    ───────────────────────────────────────────── */
 
-function ActiveDemo({ onClose }) {
+function PointCloudDemo({ onClose }) {
   const [timestep, setTimestep] = useState(1)
   const [rgbSrc, setRgbSrc] = useState(null)
   const [pmSrc, setPmSrc] = useState(null)
   const [cloudData, setCloudData] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  // Try loading real bin, fallback to mock
+  // Fetch .bin (or mock) — cancelled on unmount so no setState after destroy
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -269,19 +266,14 @@ function ActiveDemo({ onClose }) {
     const url = `${BASE}pointclouds/frame_${padded}.bin`
 
     loadBinPointCloud(url)
-      .then((data) => {
-        if (!cancelled) {
-          setCloudData(data)
-          setLoading(false)
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setCloudData(generateMockPointCloud(timestep))
-          setLoading(false)
-        }
-      })
-    return () => { cancelled = true }
+      .then((data) => { if (!cancelled) { setCloudData(data); setLoading(false) } })
+      .catch(() => { if (!cancelled) { setCloudData(generateMockPointCloud(timestep)); setLoading(false) } })
+
+    return () => {
+      cancelled = true
+      // Sever reference to previous cloudData so the old Float32Arrays can be GC'd
+      setCloudData(null)
+    }
   }, [timestep])
 
   const handleRGB = useCallback((src) => setRgbSrc(src), [])
@@ -294,7 +286,7 @@ function ActiveDemo({ onClose }) {
         className="relative w-full rounded-2xl overflow-hidden border border-gray-700 bg-gray-950 touch-none select-none"
         style={{ aspectRatio: '16/9' }}
       >
-        {/* 3D Canvas */}
+        {/* 3D Canvas — destroyed entirely when PointCloudDemo unmounts */}
         <Canvas
           camera={{ position: [0.8, -0.3, 1.2], fov: 50, near: 0.01, far: 100 }}
           gl={{ antialias: true, preserveDrawingBuffer: true }}
@@ -303,7 +295,7 @@ function ActiveDemo({ onClose }) {
         >
           <ambientLight intensity={0.5} />
           <Suspense fallback={null}>
-            <PointCloudScene
+            <PointCloudInner
               cloudData={cloudData}
               onRGBTexture={handleRGB}
               onPointMapTexture={handlePM}
@@ -426,7 +418,8 @@ function ActiveDemo({ onClose }) {
 function PerformanceOverlay({ onActivate }) {
   return (
     <motion.div
-      initial={{ opacity: 1 }}
+      initial={{ opacity: 0, scale: 0.98 }}
+      animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.98 }}
       transition={{ duration: 0.4, ease: 'easeOut' }}
       className="relative w-full h-[540px] sm:h-[600px] rounded-2xl overflow-hidden border border-gray-700"
@@ -484,7 +477,8 @@ function PerformanceOverlay({ onActivate }) {
 }
 
 /* ─────────────────────────────────────────────
-   6. Main exported component
+   6. Main exported component (lightweight shell)
+   Only holds isDemoActive boolean — no heavy data.
    ───────────────────────────────────────────── */
 
 export default function InteractiveProjectionDemo() {
@@ -504,9 +498,7 @@ export default function InteractiveProjectionDemo() {
         </p>
 
         <AnimatePresence mode="wait">
-          {!isDemoActive ? (
-            <PerformanceOverlay key="overlay" onActivate={() => setIsDemoActive(true)} />
-          ) : (
+          {isDemoActive ? (
             <motion.div
               key="demo"
               initial={{ opacity: 0 }}
@@ -514,8 +506,10 @@ export default function InteractiveProjectionDemo() {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.4, ease: 'easeOut' }}
             >
-              <ActiveDemo onClose={() => setIsDemoActive(false)} />
+              <PointCloudDemo onClose={() => setIsDemoActive(false)} />
             </motion.div>
+          ) : (
+            <PerformanceOverlay key="overlay" onActivate={() => setIsDemoActive(true)} />
           )}
         </AnimatePresence>
       </div>
