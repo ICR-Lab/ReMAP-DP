@@ -378,7 +378,7 @@ function PointCloudDemo({ onClose }) {
         <input
           type="range"
           min={1}
-          max={10}
+          max={27}
           step={1}
           value={timestep}
           onChange={(e) => setTimestep(Number(e.target.value))}
