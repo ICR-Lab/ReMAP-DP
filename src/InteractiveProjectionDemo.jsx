@@ -265,45 +265,76 @@ function PointCloudDemo({ onClose }) {
   const [loadedCount, setLoadedCount] = useState(0)   // how many frames are cached
   const preloaderAbort = useRef(null)
 
-  // ── Background preloader: fetches frame_00, frame_01, … sequentially ──
+  // ── Background preloader: fetches frame_00 first, then remaining frames 4-at-a-time ──
   useEffect(() => {
     const abort = new AbortController()
     preloaderAbort.current = abort
-    let idx = 0
+    const CONCURRENCY = 4
 
-    async function preloadNext() {
-      while (!abort.signal.aborted) {
-        // Skip if already cached (e.g. user clicked ahead and we fetched on-demand)
-        if (cacheRef.current.has(idx)) {
-          idx++
-          continue
+    // Try to load a single frame by index, returns true on success, false on 404/end
+    async function loadFrame(idx) {
+      if (cacheRef.current.has(idx)) return true
+      const padded = String(idx).padStart(2, '0')
+      const url = `${BASE}pointclouds/frame_${padded}.bin`
+      const data = await loadBinPointCloud(url, abort.signal) // throws on 404 or abort
+      if (abort.signal.aborted) return false
+      cacheRef.current.set(idx, data)
+      setLoadedCount(cacheRef.current.size)
+      return true
+    }
+
+    async function run() {
+      // Phase 1: load frame 0 ASAP so the user sees something immediately
+      try {
+        await loadFrame(0)
+        if (abort.signal.aborted) return
+        setCloudData(cacheRef.current.get(0))
+        setLoading(false)
+      } catch {
+        if (abort.signal.aborted) return
+        // Even frame 0 failed — show mock and bail
+        const mock = generateMockPointCloud(0)
+        setCloudData(mock)
+        setLoading(false)
+        setTotalFrames(0)
+        return
+      }
+
+      // Phase 2: discover total frame count + preload remaining, N-at-a-time
+      let nextIdx = 1
+      let foundEnd = false
+
+      while (!abort.signal.aborted && !foundEnd) {
+        // Build a batch of up to CONCURRENCY indices
+        const batch = []
+        for (let i = 0; i < CONCURRENCY && !foundEnd; i++) {
+          batch.push(nextIdx + i)
         }
-        const padded = String(idx).padStart(2, '0')
-        const url = `${BASE}pointclouds/frame_${padded}.bin`
-        try {
-          const data = await loadBinPointCloud(url, abort.signal)
-          if (abort.signal.aborted) return
-          cacheRef.current.set(idx, data)
-          setLoadedCount(cacheRef.current.size)
-          // If this is the very first frame, display it immediately
-          if (idx === 0) {
-            setCloudData(data)
-            setLoading(false)
+
+        // Fire all fetches in parallel
+        const results = await Promise.allSettled(
+          batch.map((idx) => loadFrame(idx))
+        )
+
+        if (abort.signal.aborted) return
+
+        // Check results — first rejection/failure means we found the end
+        for (let i = 0; i < results.length; i++) {
+          if (results[i].status === 'rejected' || results[i].value === false) {
+            // Frame at batch[i] doesn't exist — total is batch[i]
+            setTotalFrames(batch[i])
+            foundEnd = true
+            break
           }
-          idx++
-        } catch {
-          if (abort.signal.aborted) return
-          // 404 or network error → we've found the end
-          setTotalFrames(idx)
-          return
         }
+
+        if (!foundEnd) nextIdx += batch.length
       }
     }
 
-    preloadNext()
+    run()
     return () => {
       abort.abort()
-      // Sever cache to free all Float32Arrays
       cacheRef.current.clear()
       preloaderAbort.current = null
     }
