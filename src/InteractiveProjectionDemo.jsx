@@ -11,8 +11,9 @@ import * as THREE from 'three'
 
 const BASE = import.meta.env.BASE_URL
 
-async function loadBinPointCloud(url) {
-  const resp = await fetch(url)
+async function loadBinPointCloud(url, signal) {
+  const resp = await fetch(url, signal ? { signal } : undefined)
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
   const buf = await resp.arrayBuffer()
   const raw = new Float32Array(buf)
   const count = raw.length / 6
@@ -252,46 +253,115 @@ function PointCloudInner({ cloudData, onRGBTexture, onPointMapTexture }) {
    ───────────────────────────────────────────── */
 
 function PointCloudDemo({ onClose }) {
-  const MAX_STEP = 27
-  const [timestep, setTimestep] = useState(1)
+  // Frame cache: index → cloud data.  Lives in a ref so writes don't trigger re-renders.
+  const cacheRef = useRef(new Map())
+  const [timestep, setTimestep] = useState(0)       // 0-indexed, starts at frame_00
   const [playing, setPlaying] = useState(false)
   const [rgbSrc, setRgbSrc] = useState(null)
   const [pmSrc, setPmSrc] = useState(null)
-  const [cloudData, setCloudData] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [cloudData, setCloudData] = useState(null)   // currently displayed frame
+  const [loading, setLoading] = useState(true)        // true while current frame isn't ready
+  const [totalFrames, setTotalFrames] = useState(null) // null = still discovering
+  const [loadedCount, setLoadedCount] = useState(0)   // how many frames are cached
+  const preloaderAbort = useRef(null)
 
-  // Auto-play: advance timestep every 600ms
+  // ── Background preloader: fetches frame_00, frame_01, … sequentially ──
   useEffect(() => {
-    if (!playing) return
-    const id = setInterval(() => {
-      setTimestep((prev) => {
-        if (prev >= MAX_STEP) { setPlaying(false); return prev }
-        return prev + 1
-      })
-    }, 600)
-    return () => clearInterval(id)
-  }, [playing])
+    const abort = new AbortController()
+    preloaderAbort.current = abort
+    let idx = 0
 
-  // Fetch .bin (or mock) — cancelled on unmount so no setState after destroy
+    async function preloadNext() {
+      while (!abort.signal.aborted) {
+        // Skip if already cached (e.g. user clicked ahead and we fetched on-demand)
+        if (cacheRef.current.has(idx)) {
+          idx++
+          continue
+        }
+        const padded = String(idx).padStart(2, '0')
+        const url = `${BASE}pointclouds/frame_${padded}.bin`
+        try {
+          const data = await loadBinPointCloud(url, abort.signal)
+          if (abort.signal.aborted) return
+          cacheRef.current.set(idx, data)
+          setLoadedCount(cacheRef.current.size)
+          // If this is the very first frame, display it immediately
+          if (idx === 0) {
+            setCloudData(data)
+            setLoading(false)
+          }
+          idx++
+        } catch {
+          if (abort.signal.aborted) return
+          // 404 or network error → we've found the end
+          setTotalFrames(idx)
+          return
+        }
+      }
+    }
+
+    preloadNext()
+    return () => {
+      abort.abort()
+      // Sever cache to free all Float32Arrays
+      cacheRef.current.clear()
+      preloaderAbort.current = null
+    }
+  }, [])
+
+  // ── When timestep changes, show cached frame or fetch on-demand ──
   useEffect(() => {
-    let cancelled = false
+    const cached = cacheRef.current.get(timestep)
+    if (cached) {
+      setCloudData(cached)
+      setLoading(false)
+      return
+    }
+    // Not cached yet — fetch on-demand
     setLoading(true)
+    let cancelled = false
     const padded = String(timestep).padStart(2, '0')
     const url = `${BASE}pointclouds/frame_${padded}.bin`
 
     loadBinPointCloud(url)
-      .then((data) => { if (!cancelled) { setCloudData(data); setLoading(false) } })
-      .catch(() => { if (!cancelled) { setCloudData(generateMockPointCloud(timestep)); setLoading(false) } })
+      .then((data) => {
+        if (cancelled) return
+        cacheRef.current.set(timestep, data)
+        setLoadedCount(cacheRef.current.size)
+        setCloudData(data)
+        setLoading(false)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setCloudData(generateMockPointCloud(timestep))
+        setLoading(false)
+      })
 
-    return () => {
-      cancelled = true
-      // Sever reference to previous cloudData so the old Float32Arrays can be GC'd
-      setCloudData(null)
-    }
+    return () => { cancelled = true }
   }, [timestep])
+
+  // ── Auto-play: only advance when the next frame is cached ──
+  useEffect(() => {
+    if (!playing) return
+    const id = setInterval(() => {
+      setTimestep((prev) => {
+        const maxIdx = totalFrames != null ? totalFrames - 1 : Infinity
+        const next = prev + 1
+        if (next > maxIdx) { setPlaying(false); return prev }
+        // Wait if next frame hasn't loaded yet
+        if (!cacheRef.current.has(next)) return prev
+        return next
+      })
+    }, 600)
+    return () => clearInterval(id)
+  }, [playing, totalFrames])
 
   const handleRGB = useCallback((src) => setRgbSrc(src), [])
   const handlePM = useCallback((src) => setPmSrc(src), [])
+
+  const maxIdx = totalFrames != null ? totalFrames - 1 : Math.max(loadedCount - 1, 0)
+  const displayStep = timestep + 1                    // 1-indexed for UI
+  const displayTotal = totalFrames ?? `${loadedCount}+`  // "27" or "12+"
 
   return (
     <>
@@ -300,7 +370,7 @@ function PointCloudDemo({ onClose }) {
         className="relative w-full rounded-2xl overflow-hidden border border-gray-700 bg-gray-950 touch-none select-none"
         style={{ aspectRatio: '16/9' }}
       >
-        {/* 3D Canvas — destroyed entirely when PointCloudDemo unmounts */}
+        {/* 3D Canvas */}
         <Canvas
           camera={{ position: [0.8, -0.3, 1.2], fov: 50, near: 0.01, far: 100 }}
           gl={{ antialias: true, preserveDrawingBuffer: true }}
@@ -389,7 +459,7 @@ function PointCloudDemo({ onClose }) {
         {/* Play / Pause */}
         <button
           onClick={() => {
-            if (!playing && timestep >= MAX_STEP) setTimestep(1)
+            if (!playing && totalFrames != null && timestep >= totalFrames - 1) setTimestep(0)
             setPlaying((p) => !p)
           }}
           className="w-9 h-9 rounded-full flex items-center justify-center
@@ -401,8 +471,8 @@ function PointCloudDemo({ onClose }) {
 
         {/* Prev */}
         <button
-          onClick={() => { setPlaying(false); setTimestep((p) => Math.max(1, p - 1)) }}
-          disabled={timestep <= 1}
+          onClick={() => { setPlaying(false); setTimestep((p) => Math.max(0, p - 1)) }}
+          disabled={timestep <= 0}
           className="w-8 h-8 rounded-lg flex items-center justify-center
                      bg-gray-800 hover:bg-gray-700 text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed
                      transition-colors cursor-pointer"
@@ -414,8 +484,8 @@ function PointCloudDemo({ onClose }) {
         {/* Slider */}
         <input
           type="range"
-          min={1}
-          max={MAX_STEP}
+          min={0}
+          max={maxIdx}
           step={1}
           value={timestep}
           onChange={(e) => { setPlaying(false); setTimestep(Number(e.target.value)) }}
@@ -427,8 +497,8 @@ function PointCloudDemo({ onClose }) {
 
         {/* Next */}
         <button
-          onClick={() => { setPlaying(false); setTimestep((p) => Math.min(MAX_STEP, p + 1)) }}
-          disabled={timestep >= MAX_STEP}
+          onClick={() => { setPlaying(false); setTimestep((p) => Math.min(maxIdx, p + 1)) }}
+          disabled={timestep >= maxIdx}
           className="w-8 h-8 rounded-lg flex items-center justify-center
                      bg-gray-800 hover:bg-gray-700 text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed
                      transition-colors cursor-pointer"
@@ -439,7 +509,27 @@ function PointCloudDemo({ onClose }) {
 
         {/* Step counter */}
         <span className="text-sm text-gray-400 font-mono tabular-nums whitespace-nowrap min-w-[4.5rem] text-right">
-          {timestep} / {MAX_STEP}
+          {displayStep} / {displayTotal}
+        </span>
+      </div>
+
+      {/* Preload progress indicator */}
+      <div className="mt-3 flex items-center gap-3">
+        <div className="flex-1 h-1 rounded-full bg-gray-800 overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-300 ease-out"
+            style={{
+              width: totalFrames ? `${(loadedCount / totalFrames) * 100}%` : '100%',
+              background: totalFrames && loadedCount >= totalFrames
+                ? '#22c55e'
+                : 'linear-gradient(90deg, #3b82f6, #60a5fa)',
+            }}
+          />
+        </div>
+        <span className="text-[11px] text-gray-500 font-mono tabular-nums whitespace-nowrap">
+          {totalFrames
+            ? `${loadedCount} / ${totalFrames} frames loaded`
+            : `${loadedCount} frames loaded…`}
         </span>
       </div>
 
