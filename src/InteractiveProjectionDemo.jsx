@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useMemo, useCallback, Suspense } from 'rea
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Cpu, TriangleAlert, Power } from 'lucide-react'
+import { Cpu, TriangleAlert, Power, Play, Pause, SkipBack, SkipForward } from 'lucide-react'
 import * as THREE from 'three'
 
 /* ─────────────────────────────────────────────
@@ -252,11 +252,25 @@ function PointCloudInner({ cloudData, onRGBTexture, onPointMapTexture }) {
    ───────────────────────────────────────────── */
 
 function PointCloudDemo({ onClose }) {
+  const MAX_STEP = 27
   const [timestep, setTimestep] = useState(1)
+  const [playing, setPlaying] = useState(false)
   const [rgbSrc, setRgbSrc] = useState(null)
   const [pmSrc, setPmSrc] = useState(null)
   const [cloudData, setCloudData] = useState(null)
   const [loading, setLoading] = useState(true)
+
+  // Auto-play: advance timestep every 600ms
+  useEffect(() => {
+    if (!playing) return
+    const id = setInterval(() => {
+      setTimestep((prev) => {
+        if (prev >= MAX_STEP) { setPlaying(false); return prev }
+        return prev + 1
+      })
+    }, 600)
+    return () => clearInterval(id)
+  }, [playing])
 
   // Fetch .bin (or mock) — cancelled on unmount so no setState after destroy
   useEffect(() => {
@@ -370,38 +384,63 @@ function PointCloudDemo({ onClose }) {
         </button>
       </div>
 
-      {/* Timestep slider */}
-      <div className="mt-5 flex items-center gap-4">
-        <label className="text-sm text-gray-400 font-medium whitespace-nowrap">
-          Time Step: <span className="text-white font-mono">{timestep}</span>
-        </label>
+      {/* Transport controls */}
+      <div className="mt-5 flex items-center gap-3">
+        {/* Play / Pause */}
+        <button
+          onClick={() => {
+            if (!playing && timestep >= MAX_STEP) setTimestep(1)
+            setPlaying((p) => !p)
+          }}
+          className="w-9 h-9 rounded-full flex items-center justify-center
+                     bg-blue-500 hover:bg-blue-600 text-white transition-colors cursor-pointer shadow-md"
+          aria-label={playing ? 'Pause' : 'Play'}
+        >
+          {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+        </button>
+
+        {/* Prev */}
+        <button
+          onClick={() => { setPlaying(false); setTimestep((p) => Math.max(1, p - 1)) }}
+          disabled={timestep <= 1}
+          className="w-8 h-8 rounded-lg flex items-center justify-center
+                     bg-gray-800 hover:bg-gray-700 text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed
+                     transition-colors cursor-pointer"
+          aria-label="Previous step"
+        >
+          <SkipBack className="w-3.5 h-3.5" />
+        </button>
+
+        {/* Slider */}
         <input
           type="range"
           min={1}
-          max={27}
+          max={MAX_STEP}
           step={1}
           value={timestep}
-          onChange={(e) => setTimestep(Number(e.target.value))}
+          onChange={(e) => { setPlaying(false); setTimestep(Number(e.target.value)) }}
           className="flex-1 h-1.5 rounded-full appearance-none bg-gray-700 accent-blue-500 cursor-pointer
                      [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
                      [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:shadow-lg
                      [&::-webkit-slider-thumb]:cursor-pointer"
         />
-        <div className="flex gap-1.5">
-          {Array.from({ length: 10 }, (_, i) => i + 1).map((s) => (
-            <button
-              key={s}
-              onClick={() => setTimestep(s)}
-              className={`w-6 h-6 rounded text-[10px] font-mono transition-colors cursor-pointer
-                ${s === timestep
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-800 text-gray-500 hover:bg-gray-700 hover:text-gray-300'
-                }`}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
+
+        {/* Next */}
+        <button
+          onClick={() => { setPlaying(false); setTimestep((p) => Math.min(MAX_STEP, p + 1)) }}
+          disabled={timestep >= MAX_STEP}
+          className="w-8 h-8 rounded-lg flex items-center justify-center
+                     bg-gray-800 hover:bg-gray-700 text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed
+                     transition-colors cursor-pointer"
+          aria-label="Next step"
+        >
+          <SkipForward className="w-3.5 h-3.5" />
+        </button>
+
+        {/* Step counter */}
+        <span className="text-sm text-gray-400 font-mono tabular-nums whitespace-nowrap min-w-[4.5rem] text-right">
+          {timestep} / {MAX_STEP}
+        </span>
       </div>
 
       <p className="text-xs text-gray-600 mt-3">
