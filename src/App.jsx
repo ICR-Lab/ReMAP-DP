@@ -3,6 +3,7 @@ import CoolVideoCoverflow from './CoolVideoCoverflow'
 import RealWorldGallery from './RealWorldGallery'
 import MethodPipeline from './MethodPipeline'
 import InteractiveProjectionDemo from './InteractiveProjectionDemo'
+import YouTubeDemo from './YouTubeDemo'
 import VisitorTraffic from './VisitorTraffic'
 
 const NAV_ITEMS = ['Abstract', 'Method', 'Demo', 'Simulation', 'Real-World', 'Results', 'BibTeX']
@@ -525,6 +526,7 @@ function App() {
       <main>
         <Hero />
         <Abstract />
+        <YouTubeDemo />
         <MethodPipeline />
         <InteractiveProjectionDemo />
         <CoolVideoCoverflow />
