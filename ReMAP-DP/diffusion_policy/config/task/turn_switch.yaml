@@ -1,0 +1,61 @@
+name: TurnSwitch
+
+task_name: ${name}
+
+shape_meta: &shape_meta
+  obs:
+    # RGB Planes (High Res)
+    xy_plane:
+      shape: [224, 224, 3]
+      type: rgb
+    xz_plane:
+      shape: [224, 224, 3]
+      type: rgb
+    yz_plane:
+      shape: [224, 224, 3]
+      type: rgb
+    
+    # PointMap Planes (Low Res for Training)
+    pmp_xy_plane:
+      shape: [224, 224, 3]
+      type: pointmap
+    pmp_xz_plane:
+      shape: [224, 224, 3]
+      type: pointmap
+    pmp_yz_plane:
+      shape: [224, 224, 3]
+      type: pointmap
+      
+    agent_pos:
+      shape: [28]
+      type: low_dimx
+  action:
+    shape: [14]
+
+env_runner:
+  _target_: diffusion_policy.env_runner.pmp_runner.ManiSkillRunner
+  eval_episodes: 10
+  max_steps: 210
+  n_obs_steps: ${n_obs_steps}
+  n_action_steps: ${n_action_steps}
+  fps: 10
+  n_envs: null
+  n_train: null
+  n_test: null
+  control_mode: pd_ee_delta_pose
+  task_name: ${task_name}
+  num_eval_envs: 1
+  sim_backend: cpu
+  device: ${training.device}
+  use_point_crop: ${policy.use_point_crop}
+  projection_mode: ${policy.projection_mode}
+
+dataset:
+  _target_: diffusion_policy.dataset.pmp_dataset.ManiSkillDataset
+  zarr_path: /home/icrlab/imitation/improved_dp/data/robotwin_turn_switch_expert.zarr
+  horizon: ${horizon}
+  pad_before: ${eval:'${n_obs_steps}-1'}
+  pad_after: ${eval:'${n_action_steps}-1'}
+  seed: 42
+  val_ratio: 0.02
+  max_train_episodes: 200

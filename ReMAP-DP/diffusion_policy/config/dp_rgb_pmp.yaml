@@ -1,0 +1,28 @@
+defaults:
+  - dp
+  - _self_
+
+name: PushCube-v1-per-dp-pointnet-attn
+
+policy:
+  obs_encoder:
+    _target_: diffusion_policy.model.vision.spatial_encoder.SpatialEncoder
+    shape_meta: ${shape_meta}
+    rgb_model:
+      _target_: diffusion_policy.model.vision.model_getter.get_rgb_model
+      name: dinov2_spatial
+      weights: null
+      return_attention: True
+    resize_shape: null
+    crop_shape: [76, 76]
+    random_crop: False
+    use_group_norm: True
+    share_rgb_model: False
+    imagenet_norm: True
+    use_spatial_attention: True
+    pointmap_cfg:
+      model_type: pointnet
+      in_channels: 3
+      out_dim: 256
+      hidden_dim: 128
+      num_points: 1024

@@ -1,0 +1,11 @@
+# Basic experiment configuration (keep unchanged)
+policy_name: Remap-DP
+task_name: null
+task_config: null
+ckpt_setting: null
+seed: null
+instruction_type: unseen
+
+ckpt_path: PASTE_CKPT_PATH_HERE # Path your checkpoint to deploy
+use_point_crop: False # Whether to crop point cloud to workspace bounds (should match training data processing)
+num_points: 0 # Number of points to downsample to (0 means no downsampling)
