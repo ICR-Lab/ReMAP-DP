@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
+BRANCH="master"
 DEBOUNCE=5  # seconds to wait after last change before pushing
 
 echo "[auto-deploy] Watching for changes on branch '$BRANCH'..."
