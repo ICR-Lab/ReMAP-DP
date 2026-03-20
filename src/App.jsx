@@ -350,7 +350,7 @@ function Results() {
                   <td className="text-center py-3 px-4 font-semibold">41.6%</td>
                 </tr>
                 <tr className="border-b border-gray-100">
-                  <td className="py-3 px-4">DP</td>
+                  <td className="py-3 px-4">DP3</td>
                   <td className="text-center py-3 px-4">0.92</td>
                   <td className="text-center py-3 px-4">0.01</td>
                   <td className="text-center py-3 px-4">0.24</td>
@@ -359,7 +359,7 @@ function Results() {
                   <td className="text-center py-3 px-4">38.6%</td>
                 </tr>
                 <tr className="border-b border-gray-100">
-                  <td className="py-3 px-4">DP3</td>
+                  <td className="py-3 px-4">DP</td>
                   <td className="text-center py-3 px-4">0.88</td>
                   <td className="text-center py-3 px-4">0.00</td>
                   <td className="text-center py-3 px-4">0.44</td>
@@ -387,8 +387,8 @@ function Results() {
                 <tr className="border-b-2 border-gray-300">
                   <th className="text-left py-3 px-4 font-semibold text-gray-900">Task</th>
                   <th className="text-center py-3 px-4 font-semibold text-gray-900">Ours</th>
-                  <th className="text-center py-3 px-4 font-semibold text-gray-900">DP</th>
                   <th className="text-center py-3 px-4 font-semibold text-gray-900">DP3</th>
+                  <th className="text-center py-3 px-4 font-semibold text-gray-900">DP</th>
                 </tr>
               </thead>
               <tbody className="text-gray-700">
