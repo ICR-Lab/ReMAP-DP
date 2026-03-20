@@ -4,12 +4,27 @@ This repository contains the official PyTorch implementation for **ReMap-DP**.
 
 ## TODO LIST
 - [x] Release evaluation code.
-- [ ] Release checkpoints on huggingface.
+- [x] Release checkpoints on huggingface.
 - [ ] Release training code.
 - [ ] Release training Dataset on huggingface.
 
+## Installation
+1. Clone the repository:
+   ```bash
+   git clone -b main https://github.com/ICR-Lab/ReMAP-DP.git
+   cd ReMAP-DP
+   ```
+
+2. Install the required dependencies:
+   ```bash
+   conda create -n Remap-DP python=3.10
+   conda activate Remap-DP
+   pip install -r requirements.txt
+   ```
+
 ## Checkpoints and Dataset
-coming soon
+Ckpts can be downloaded at [Here](https://huggingface.co/ICR-Lab/ReMAP-DP) from Huggingface.
+Datasets coming soon.
 
 ## Training
 coming soon
