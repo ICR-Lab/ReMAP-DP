@@ -5,7 +5,7 @@ This repository contains the official PyTorch implementation for **ReMap-DP**.
 ## TODO LIST
 - [x] Release evaluation code.
 - [x] Release checkpoints on huggingface.
-- [ ] Release training code.
+- [x] Release training code.
 - [ ] Release training Dataset on huggingface.
 
 ## Installation
@@ -27,7 +27,20 @@ Ckpts can be downloaded at [Here](https://huggingface.co/ICR-Lab/ReMAP-DP) from 
 Datasets coming soon.
 
 ## Training
-coming soon
+1. Review or modify the training configurations in `diffusion_policy/config/dp.yaml` and `diffusion_policy/config/train_dp_robotwin.yaml`.
+2. Start training using the `train_policy.sh` script:
+
+   ```bash
+   # Example:
+   bash ./train_policy.sh train_dp_robotwin beat_block_hammer 0211 0 0
+   ```
+   
+   **Arguments explanation:**
+   - **`$1`**: Algorithm configuration name (e.g., `train_dp_robotwin`)
+   - **`$2`**: Task name (e.g., `beat_block_hammer`)
+   - **`$3`**: Additional information / run tag (e.g., date `0211`)
+   - **`$4`**: Random seed (e.g., `0`)
+   - **`$5`**: GPU ID (e.g., `0`)
 
 ## Evaluation
 

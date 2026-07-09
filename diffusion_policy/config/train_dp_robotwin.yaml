@@ -1,0 +1,53 @@
+defaults:
+  - dp
+  - _self_
+
+name: PushCube-v1-rgbpmp-frozen
+_target_: diffusion_policy.workspace.train_dp_robotwin_workspace.TrainDiffusionUnetImageWorkspace
+
+checkpoint:
+  topk:
+    monitor_key: train_loss
+    mode: min
+    k: 10
+    format_str: 'epoch={epoch:04d}-train_loss={train_loss:.3f}.ckpt'
+  save_last_ckpt: True
+  save_last_snapshot: False
+
+policy:
+  obs_encoder:
+    _target_: diffusion_policy.model.vision.spatial_encoder.SpatialEncoder
+    shape_meta: ${shape_meta}
+    rgb_model:
+      _target_: diffusion_policy.model.vision.model_getter.get_rgb_model
+      name: dinov2_spatial
+      weights: null
+      return_attention: True
+    resize_shape: null
+    crop_shape: null
+    random_crop: False
+    use_group_norm: True
+    share_rgb_model: False
+    imagenet_norm: True
+    use_spatial_attention: True
+    use_modality_embed: True
+    pointmap_cfg:
+      model_type: vit
+      in_channels: 3
+      out_dim: 256
+      img_size: 224
+      patch_size: 14
+      embed_dim: 128
+      depth: 4
+      num_heads: 4
+    freeze_rgb: False
+    pretrained_rgb_path: null
+
+training:
+  checkpoint_every: 100
+
+dataloader:
+  num_workers: 0
+
+val_dataloader:
+  num_workers: 0

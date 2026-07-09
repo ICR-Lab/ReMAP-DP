@@ -23,7 +23,7 @@ class ManiSkillDataset(BaseDataset):
                  ):
         super().__init__()
         self.replay_buffer = ReplayBuffer.copy_from_path(
-            zarr_path, keys=['state', 'action', 'pmp_xy_plane', 'pmp_xz_plane', 'xy_plane', 'xz_plane',]) # 'left_img', 'right_img'
+            zarr_path, keys=['state', 'action', 'rgb', 'xy_plane', 'yz_plane', 'xz_plane','left_img', 'right_img']) # 'left_img', 'right_img'
         val_mask = get_val_mask(
             n_episodes=self.replay_buffer.n_episodes,
             val_ratio=val_ratio,
@@ -63,11 +63,10 @@ class ManiSkillDataset(BaseDataset):
             'agent_pos': self.replay_buffer['state'][..., :],
             'xy_plane': self.replay_buffer['xy_plane'],
             'xz_plane': self.replay_buffer['xz_plane'],
-            # 'yz_plane': self.replay_buffer['yz_plane'],
-            # 'rgb': self.replay_buffer['rgb'],
-            'pmp_xy_plane': self.replay_buffer['pmp_xy_plane'],
-            'pmp_xz_plane': self.replay_buffer['pmp_xz_plane'],
-            # 'pmp_yz_plane': self.replay_buffer['pmp_yz_plane'],
+            'yz_plane': self.replay_buffer['yz_plane'],
+            'rgb': self.replay_buffer['rgb'],
+            'left_img': self.replay_buffer['left_img'],
+            'right_img': self.replay_buffer['right_img'],
         }
         normalizer = LinearNormalizer() # [-1,1]
         normalizer.fit(data=data, last_n_dims=1, mode=mode, **kwargs)
@@ -79,23 +78,21 @@ class ManiSkillDataset(BaseDataset):
     def _sample_to_data(self, sample):
         agent_pos = sample['state'][:, ].astype(np.float32)
         # point_cloud = sample['point_cloud'][:, ].astype(np.float32)
-        # rgb = sample['rgb'][:, ].astype(np.uint8)
+        rgb = sample['rgb'][:, ].astype(np.uint8)
         xy_plane = sample['xy_plane'][:, ].astype(np.uint8)
         xz_plane = sample['xz_plane'][:, ].astype(np.uint8)
-        # yz_plane = sample['yz_plane'][:, ].astype(np.uint8)
+        yz_plane = sample['yz_plane'][:, ].astype(np.uint8)
         
         data = {
             'obs': {
                 # 'point_cloud': point_cloud,
                 'agent_pos': agent_pos,
-                # 'rgb': rgb,
+                'rgb': rgb,
                 'xy_plane': xy_plane,
-                # 'yz_plane': yz_plane,
+                'yz_plane': yz_plane,
                 'xz_plane': xz_plane,
-                'pmp_xy_plane': sample['pmp_xy_plane'],
-                'pmp_xz_plane': sample['pmp_xz_plane'],
-                # 'pmp_yz_plane': sample['pmp_yz_plane'],
-                # 'left_img': sample['left_img'][:, ].
+                'left_img': sample['left_img'][:, ].astype(np.uint8),
+                'right_img': sample['right_img'][:, ].astype(np.uint8),
             },
             'action': sample['action'].astype(np.float32)
         }
