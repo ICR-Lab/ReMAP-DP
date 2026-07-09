@@ -1,0 +1,1 @@
+This folder is specifically designed for the evaluation of Robotwin 2.0. For specific details, please refer to the README on the homepage.
