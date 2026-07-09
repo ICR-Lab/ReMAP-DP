@@ -85,18 +85,14 @@ function SectionHeading({ children }) {
     corresponding: true      → adds † (corresponding author)
    ================================================================ */}
 const AUTHORS = [
-  // { name: 'First Last', superscript: '1' },
-  // { name: 'XinZhang Yang', superscript: '1', corresponding: true, equalContribution: true  },
-  // { name: 'Renjun Wu', superscript: '1', corresponding: true, equalContribution: true  },
-  // { name: 'Hellen Ma', superscript: '2' , corresponding: true, equalContribution: true },
-  // { name: 'Jinyan Liu', superscript: '1' , corresponding: true, equalContribution: true },
-  // { name: 'Xuesong Li', superscript: '1', corresponding: true, equalContribution: true },
-  {name: 'Anonymous Authors'}
+  { name: 'Xinzhang Yang', superscript: '1', equalContribution: true },
+  { name: 'Renjun Wu', superscript: '1', equalContribution: true },
+  { name: 'Jinyan Liu', superscript: '1', corresponding: true },
+  { name: 'Xuesong Li', superscript: '1', corresponding: true },
 ]
 
 const AFFILIATIONS = [
-  // { id: '1', text: 'School of Computer Science and Technology, Beijing Institute of Technology' },
-  // { id: '2', text: 'The Hong Kong University of Science and Technology (HKUST)'}
+  { id: '1', text: 'School of Computer Science, Beijing Institute of Technology, China.' },
 ]
 {/* ================================================================ */}
 
@@ -122,35 +118,35 @@ function Hero() {
         </h1>
 
         <p className="text-base text-white/60 mb-8">
-          Submitted to IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) 2026
+          Accepted to IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) 2026
         </p>
 
         {/* ---------- Author list ---------- */}
         <div className="flex flex-wrap justify-center gap-x-4 sm:gap-x-6 gap-y-2 text-base sm:text-lg text-white/90">
           {AUTHORS.map((a, i) => (
             <span key={i} className="font-medium">
+              {i === AUTHORS.length - 1 && AUTHORS.length > 1 && 'and '}
               {a.name}
               {a.superscript && <sup className="text-xs ml-0.5">{a.superscript}</sup>}
               {a.equalContribution && <sup className="text-xs ml-0.5">*</sup>}
               {a.corresponding && <sup className="text-xs ml-0.5">&dagger;</sup>}
+              {i < AUTHORS.length - 2 && ','}
             </span>
           ))}
         </div>
 
         {/* ---------- Contribution footnotes ---------- */}
-        {/* <p className="mt-2 text-xs text-white/40">
-          * Equal contribution &nbsp;&nbsp; &dagger; Corresponding author
-        </p> */}
-        {/* <p className="mt-2 text-xs text-white/40">
-            &dagger; Corresponding author
-        </p> */}
+        <div className="mt-2 text-xs text-white/40 space-y-0.5">
+          <p>* Equal contribution.</p>
+          <p>&dagger; The corresponding authors: {'{jyliu, lixuesong}@bit.edu.cn'}</p>
+        </div>
 
         {/* ---------- Affiliations ---------- */}
         {AFFILIATIONS.length > 0 && (
           <div className="mt-3 space-y-0.5">
             {AFFILIATIONS.map((af) => (
               <p key={af.id} className="text-sm text-white/50">
-                <sup>{af.id}</sup>{af.text}
+                <sup>{af.id}</sup> {af.text}
               </p>
             ))}
           </div>
